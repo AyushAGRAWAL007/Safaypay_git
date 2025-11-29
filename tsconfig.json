@@ -1,0 +1,29 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+
+    "allowJs": true,
+    "skipLibCheck": true,
+
+    /* keep your existing relaxations if you need them */
+    "noImplicitAny": false,
+    "noUnusedParameters": false,
+    "noUnusedLocals": false,
+    "strictNullChecks": false,
+
+    /* Recommended safety settings (enable strict mode) */
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Silence TS7 deprecation warning about baseUrl (optional) */
+    "ignoreDeprecations": "6.0"
+  }
+}
