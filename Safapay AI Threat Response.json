@@ -1,0 +1,263 @@
+{
+  "name": "SentinelVision AI Threat Response",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/webhook/sentinelvision-alert",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "3be8befa-6c92-44c9-b38f-5eef603a22ef",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -176,
+        672
+      ],
+      "webhookId": "ce44ea6e-6d0f-44e7-a67f-7baddd4360fd"
+    },
+    {
+      "parameters": {
+        "from": "+19258860666",
+        "to": "+919348558683",
+        "message": "=🚨 SCAM ALERT 🚨\nPotential scam activity detected.\nPlease verify immediately.\n\nSAFAPAY SECURITY",
+        "options": {}
+      },
+      "id": "6ef0a454-2186-4909-af1a-05abe1ab8207",
+      "name": "Send SMS Alert",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        48,
+        384
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "sTCyZJPm8MH3LTxu",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "ayushagrawalsp@gmail.com",
+        "subject": "=Safapay Security {{ $json.threat_data.threat_level }} Alert: {{ $json.threat_data.name }}",
+        "message": "=🚨 SCAM ALERT 🚨\nPotential scam activity detected.\nPlease verify immediately.\n\nSAFAPAY SECURITY",
+        "options": {}
+      },
+      "id": "33c7fe0a-ab64-4eab-9b63-1c76557c7fa7",
+      "name": "Send Email Alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        48,
+        576
+      ],
+      "webhookId": "8800678d-f87d-4585-b89d-2e37829b2b99",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "nCWbo7xPnQfjRUBD",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#all-hackn8n",
+          "mode": "name"
+        },
+        "text": "=🚨 SCAM ALERT 🚨\nPotential scam activity detected.\nPlease verify immediately.\n\nSAFAPAY SECURITY",
+        "otherOptions": {}
+      },
+      "id": "6b78d5bd-34be-4567-9930-656a92d313ca",
+      "name": "Send Slack Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        48,
+        768
+      ],
+      "webhookId": "2c589d41-4013-4494-b631-913a92f8439e",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "M4re3Vc3Cm2JvUEP",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://webhook.site/9fdfbf20-083f-42f4-b15e-035cd90025a5",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "7d7c2639-7c19-4f5a-85ed-3f59f1d6bf7f",
+      "name": "Forward to Security System",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        48,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "alerts_sent",
+              "value": "[\"SMS\", \"Email\", \"Slack\"]",
+              "type": "array"
+            },
+            {
+              "id": "id-3",
+              "name": "incident_id",
+              "value": "={{ $('Webhook Trigger').first().json.incident_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "92f606d4-019b-4c0d-a33d-12e9bd8b21fe",
+      "name": "Build Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        272,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "options": {}
+      },
+      "id": "25a86364-e8c8-4441-a09d-8d2e67ecc956",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        496,
+        672
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send SMS Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Email Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Slack Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Forward to Security System",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send SMS Alert": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email Alert": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Slack Alert": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Forward to Security System": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f1e4948a-7f53-4ceb-8533-5a7229524ead",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a9bb1df6b8c3b35acd3c7da2efe39fc8dcfb7389d45bdc51d53bef3cfdc3d792"
+  },
+  "id": "CTnJPh5ZM8DUp0cC",
+  "tags": []
+}
