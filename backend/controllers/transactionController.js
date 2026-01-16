@@ -1,102 +1,114 @@
-// src/controllers/verificationController.js
-import path from "path";
-import { Verification, Photo, Transaction } from "../models/index.js";
+const db = require('../config/database');
 
-/**
- * Receiver submits verification (with photo upload).
- * Route expects multipart/form-data:
- * - file: image
- * - verificationId: friendly id or transactionId
- * - location, lat, lng, device
- */
-export const submitVerification = async (req, res) => {
+// Get transaction history for a user
+const getTransactionHistory = async (req, res) => {
   try {
-    // multer gives file at req.file
-    const file = req.file;
-    const { verificationId, transactionId, location, lat, lng, device } = req.body;
+    const userId = req.params.userId;
+    
+    const [transactions] = await db.promise().query(
+      `SELECT 
+        t.id,
+        t.type,
+        t.amount,
+        t.recipient_sender,
+        t.category,
+        t.status,
+        t.requires_verification,
+        t.verified,
+        t.transaction_time,
+        t.created_at,
+        a.current_balance
+       FROM transactions t
+       JOIN accounts a ON t.account_id = a.id
+       WHERE a.user_id = ?
+       ORDER BY t.transaction_time DESC`,
+      [userId]
+    );
 
-    // find verification either by verificationId or transactionId
-    let ver;
-    if (verificationId) ver = await Verification.findOne({ verificationId });
-    else if (transactionId) {
-      const tx = await Transaction.findOne({ transactionId });
-      if (!tx) return res.status(404).json({ error: "Transaction not found" });
-      ver = await Verification.findOne({ transaction: tx._id });
-    }
-
-    if (!ver) return res.status(404).json({ error: "Verification not found" });
-
-    // create Photo record
-    const url = file ? `/uploads/${path.basename(file.path)}` : null;
-    const photo = await Photo.create({
-      url,
-      storageType: "external",
-      filename: file ? path.basename(file.path) : null,
-      contentType: file ? file.mimetype : null,
-      size: file ? file.size : 0,
-      metadata: { device, location, coordinates: { lat, lng } }
+    res.json({
+      success: true,
+      transactions: transactions
     });
-
-    // attach photo to verification
-    ver.photoRef = photo._id;
-    ver.photoSnapshotUrl = url;
-    ver.location = location || ver.location;
-    ver.coordinates = lat && lng ? { lat: parseFloat(lat), lng: parseFloat(lng) } : ver.coordinates;
-    ver.metadata = { ...ver.metadata, device };
-    ver.status = "processing";
-    await ver.save();
-
-    // Notify: in production you would enqueue AI processing / send message to agent
-    // Here we just respond; AI agent will poll /ai/process-verification or you can call /ai/simulate
-    return res.status(200).json({ verification: ver, photo });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Server error" });
+  } catch (error) {
+    console.error('Transaction history error:', error);
+    res.status(500).json({ error: 'Failed to fetch transaction history' });
   }
 };
 
-/**
- * Endpoint for Agentic AI to write results of processing
- * Body: { verificationId, verdict: 'pass'|'fail'|'manual_review', score: number, details: {} }
- */
-export const postAiResult = async (req, res) => {
+// Create new transaction
+const createTransaction = async (req, res) => {
   try {
-    const { verificationId, verdict = "unknown", score = 0, details = {} } = req.body;
-    if (!verificationId) return res.status(400).json({ error: "verificationId required" });
+    const { user_id, type, amount, recipient_sender, category, account_id } = req.body;
+    
+    const connection = await db.promise().getConnection();
+    await connection.beginTransaction();
 
-    const ver = await Verification.findOne({ verificationId }).populate("transaction");
-    if (!ver) return res.status(404).json({ error: "Verification not found" });
+    try {
+      // Insert transaction
+      const [result] = await connection.query(
+        `INSERT INTO transactions 
+         (account_id, type, amount, recipient_sender, category, status, requires_verification) 
+         VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+        [account_id, type, amount, recipient_sender, category, amount > 5000] // Require verification for large amounts
+      );
 
-    ver.aiResult = { score, verdict, details };
-    ver.status = verdict === "pass" ? "verified" : (verdict === "fail" ? "failed" : "processing");
-    ver.processedAt = new Date();
-    await ver.save();
-
-    // update transaction status if present
-    if (ver.transaction) {
-      const tx = await Transaction.findById(ver.transaction);
-      if (tx) {
-        if (ver.status === "verified") tx.status = "verified";
-        if (ver.status === "failed") tx.status = "failed";
-        await tx.save();
+      // Update account balance based on transaction type
+      if (type === 'sent') {
+        await connection.query(
+          'UPDATE accounts SET current_balance = current_balance - ? WHERE id = ?',
+          [amount, account_id]
+        );
+      } else if (type === 'received') {
+        await connection.query(
+          'UPDATE accounts SET current_balance = current_balance + ? WHERE id = ?',
+          [amount, account_id]
+        );
       }
-    }
 
-    return res.json({ verification: ver });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Server error" });
+      await connection.commit();
+
+      res.json({
+        success: true,
+        transactionId: result.insertId,
+        requiresVerification: amount > 5000,
+        message: 'Transaction created successfully'
+      });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error('Create transaction error:', error);
+    res.status(500).json({ error: 'Transaction failed' });
   }
 };
 
-export const getVerification = async (req, res) => {
+// Verify transaction (for large amounts)
+const verifyTransaction = async (req, res) => {
   try {
-    const { id } = req.params; // verificationId
-    const ver = await Verification.findOne({ verificationId: id }).populate("photoRef");
-    if (!ver) return res.status(404).json({ error: "Verification not found" });
-    return res.json(ver);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Server error" });
+    const { transaction_id } = req.body;
+    
+    await db.promise().query(
+      `UPDATE transactions 
+       SET status = 'verified', verified = TRUE 
+       WHERE id = ?`,
+      [transaction_id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Transaction verified successfully'
+    });
+  } catch (error) {
+    console.error('Verify transaction error:', error);
+    res.status(500).json({ error: 'Verification failed' });
   }
+};
+
+module.exports = {
+  getTransactionHistory,
+  createTransaction,
+  verifyTransaction
 };

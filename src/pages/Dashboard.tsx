@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { 
   Shield, 
@@ -21,65 +21,118 @@ import {
   Mail,
   MessageCircle,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import axios from "axios";
+
+interface Transaction {
+  id: number;
+  type: "sent" | "received";
+  amount: number;
+  recipient_sender: string;
+  category: string;
+  status: string;
+  requires_verification: boolean;
+  verified: boolean;
+  transaction_time: string;
+  current_balance: number;
+}
+
+interface UserProfile {
+  id: number;
+  username: string;
+  email: string;
+  account_number: string;
+  current_balance: number;
+  currency: string;
+  transaction_limit: number;
+  ai_fraud_detection: boolean;
+  photo_verification: boolean;
+  location_tracking: boolean;
+}
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [transactionLimit, setTransactionLimit] = useState([65000]);
   const [isInteracting, setIsInteracting] = useState(false);
-  const currentBalance = 125000;
-  const userName = "John Smith";
-  const accountNumber = "XXXX XXXX 4827";
+  const [isLoading, setIsLoading] = useState(true);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
+  const [currentBalance, setCurrentBalance] = useState(0);
 
-  // Performance optimized transactions with useMemo
-  const recentTransactions = useMemo(() => [
-    { 
-      id: 1, 
-      type: "sent", 
-      amount: 12500, 
-      recipient: "TechCorp Solutions", 
-      category: "Business Payment",
-      status: "verified", 
-      time: "2 hours ago",
-      requiresVerification: true,
-      verified: true
-    },
-    { 
-      id: 2, 
-      type: "received", 
-      amount: 32500, 
-      sender: "Global Enterprises Ltd", 
-      category: "Invoice Payment",
-      status: "completed", 
-      time: "5 hours ago",
-      requiresVerification: false,
-      verified: true
-    },
-    { 
-      id: 3, 
-      type: "sent", 
-      amount: 4500, 
-      recipient: "Prime Utilities", 
-      category: "Bill Payment",
-      status: "completed", 
-      time: "1 day ago",
-      requiresVerification: false,
-      verified: false
-    },
-  ], []);
+  // Fetch user profile and transactions
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setIsLoading(true);
+        // In a real app, you'd get userId from auth context or localStorage
+        const userId = 1; // Replace with actual user ID from your auth system
+        
+        // Fetch user profile
+        const profileResponse = await axios.get(`/api/users/profile/${userId}`);
+        setUserProfile(profileResponse.data.user);
+        setCurrentBalance(profileResponse.data.user.current_balance);
+        setTransactionLimit([profileResponse.data.user.transaction_limit]);
+
+        // Fetch recent transactions
+        const transactionsResponse = await axios.get(`/api/transactions/history/${userId}`);
+        setRecentTransactions(transactionsResponse.data.transactions.slice(0, 5)); // Show last 5 transactions
+      } catch (error) {
+        console.error('Failed to fetch dashboard data:', error);
+        // Fallback to mock data if API fails
+        setUserProfile({
+          id: 1,
+          username: "John Smith",
+          email: "john@example.com",
+          account_number: "XXXX XXXX 4827",
+          current_balance: 125000,
+          currency: "INR",
+          transaction_limit: 65000,
+          ai_fraud_detection: true,
+          photo_verification: true,
+          location_tracking: true
+        });
+        setCurrentBalance(125000);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
 
   const securityFeatures = useMemo(() => [
-    { name: "AI Fraud Detection", status: "Active", level: "High", icon: ShieldCheck },
-    { name: "Photo Verification", status: "Ready", level: "High", icon: Camera },
-    { name: "Location Tracking", status: "Active", level: "Medium", icon: MapPin },
-    { name: "Behavior Analysis", status: "Monitoring", level: "High", icon: BarChart3 },
-  ], []);
+    { 
+      name: "AI Fraud Detection", 
+      status: userProfile?.ai_fraud_detection ? "Active" : "Inactive", 
+      level: "High", 
+      icon: ShieldCheck 
+    },
+    { 
+      name: "Photo Verification", 
+      status: userProfile?.photo_verification ? "Ready" : "Disabled", 
+      level: "High", 
+      icon: Camera 
+    },
+    { 
+      name: "Location Tracking", 
+      status: userProfile?.location_tracking ? "Active" : "Disabled", 
+      level: "Medium", 
+      icon: MapPin 
+    },
+    { 
+      name: "Behavior Analysis", 
+      status: "Monitoring", 
+      level: "High", 
+      icon: BarChart3 
+    },
+  ], [userProfile]);
 
   const quickActions = useMemo(() => [
     { label: "Send Money", icon: ArrowUpRight, path: "/transaction", primary: true },
@@ -96,12 +149,24 @@ const Dashboard = () => {
     navigate("/transactions");
   }, [navigate]);
 
-  const handleTransactionClick = useCallback((transactionId) => {
+  const handleTransactionClick = useCallback((transactionId: number) => {
     navigate(`/transaction/${transactionId}`);
   }, [navigate]);
 
+  // Update transaction limit in database
+  const updateTransactionLimit = useCallback(async (newLimit: number) => {
+    try {
+      await axios.put(`/api/users/update-limit`, {
+        user_id: userProfile?.id,
+        transaction_limit: newLimit
+      });
+    } catch (error) {
+      console.error('Failed to update transaction limit:', error);
+    }
+  }, [userProfile?.id]);
+
   // Optimized smooth animation handler with reduced layout thrashing
-  const handleSmoothInteraction = useCallback((callback) => {
+  const handleSmoothInteraction = useCallback((callback: () => void) => {
     if (isInteracting) return;
     
     setIsInteracting(true);
@@ -116,10 +181,36 @@ const Dashboard = () => {
     });
   }, [isInteracting]);
 
-  // Debounced slider handler
-  const handleSliderChange = useCallback((value) => {
-    handleSmoothInteraction(() => setTransactionLimit(value));
-  }, [handleSmoothInteraction]);
+  // Debounced slider handler with database update
+  const handleSliderChange = useCallback((value: number[]) => {
+    handleSmoothInteraction(() => {
+      setTransactionLimit(value);
+      updateTransactionLimit(value[0]);
+    });
+  }, [handleSmoothInteraction, updateTransactionLimit]);
+
+  // Format transaction time relative to now
+  const formatTransactionTime = useCallback((transactionTime: string) => {
+    const now = new Date();
+    const transactionDate = new Date(transactionTime);
+    const diffInHours = Math.floor((now.getTime() - transactionDate.getTime()) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) return "Just now";
+    if (diffInHours < 24) return `${diffInHours} hours ago`;
+    if (diffInHours < 168) return `${Math.floor(diffInHours / 24)} days ago`;
+    return transactionDate.toLocaleDateString();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -151,13 +242,15 @@ const Dashboard = () => {
             <div className="flex items-center gap-3 pl-3 border-l border-border/40">
               <Avatar className="h-8 w-8 border-2 border-primary/20 transition-all duration-300 ease-out hover:scale-110 active:scale-95">
                 <AvatarFallback className="bg-primary/10 text-primary font-medium transition-colors duration-200">
-                  JS
+                  {userProfile?.username?.split(' ').map(n => n[0]).join('') || 'US'}
                 </AvatarFallback>
               </Avatar>
               <div className="hidden sm:block">
-                <p className="text-sm font-medium transition-colors duration-200">{userName}</p>
+                <p className="text-sm font-medium transition-colors duration-200">
+                  {userProfile?.username || "User"}
+                </p>
                 <p className="text-xs text-muted-foreground transition-colors duration-200">
-                  Account: {accountNumber}
+                  Account: {userProfile?.account_number || "XXXX XXXX XXXX"}
                 </p>
               </div>
             </div>
@@ -188,7 +281,7 @@ const Dashboard = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent transition-all duration-500">
-                Welcome back, {userName}!
+                Welcome back, {userProfile?.username || "User"}!
               </h1>
               <p className="text-muted-foreground transition-colors duration-500">
                 Manage your secure payments and spending limits
@@ -276,7 +369,7 @@ const Dashboard = () => {
               </div>
             </Card>
 
-            {/* Recent Transactions - Optimized interactions */}
+            {/* Recent Transactions - Connected to SQL Database */}
             <Card className="p-6 bg-card/80 backdrop-blur-sm border-border/40 transition-all duration-500 ease-out hover:shadow-lg hover:border-border/60">
               <div className="flex items-center justify-between mb-6 transition-all duration-500">
                 <h2 className="text-xl font-bold flex items-center gap-2 transition-colors duration-500">
@@ -293,62 +386,83 @@ const Dashboard = () => {
               </div>
               
               <div className="space-y-4">
-                {recentTransactions.map((transaction) => (
-                  <div
-                    key={transaction.id}
-                    onClick={() => handleSmoothInteraction(() => handleTransactionClick(transaction.id))}
-                    className="flex items-center justify-between p-4 rounded-xl bg-background/50 border border-border/40 transition-all duration-300 ease-out hover:bg-background/80 hover:border-primary/20 hover:scale-105 active:scale-95 cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-4 transition-all duration-300">
-                      <div
-                        className={`p-3 rounded-xl transition-all duration-300 ease-out group-hover:scale-110 group-active:scale-95 ${
-                          transaction.type === "sent"
-                            ? "bg-primary/20 text-primary"
-                            : "bg-success/20 text-success"
-                        }`}
-                      >
-                        {transaction.type === "sent" ? (
-                          <ArrowUpRight className="h-5 w-5 transition-transform duration-300 group-hover:rotate-12" />
-                        ) : (
-                          <ArrowDownLeft className="h-5 w-5 transition-transform duration-300 group-hover:rotate-12" />
-                        )}
-                      </div>
-                      <div className="transition-all duration-300">
-                        <p className="font-medium transition-colors duration-300">
-                          {transaction.type === "sent" ? transaction.recipient : transaction.sender}
-                        </p>
-                        <p className="text-sm text-muted-foreground transition-colors duration-300">
-                          {transaction.category}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1 transition-all duration-300">
-                          <span className="text-xs text-muted-foreground transition-colors duration-300">
-                            {transaction.time}
-                          </span>
-                          {transaction.requiresVerification && (
-                            <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20 transition-all duration-300">
-                              <ShieldCheck className="h-3 w-3 mr-1 transition-transform duration-300" />
-                              Verified
-                            </Badge>
+                {recentTransactions.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No transactions yet</p>
+                    <Button 
+                      onClick={handleSendMoney}
+                      className="mt-4 transition-all duration-300 ease-out hover:scale-105 active:scale-95"
+                    >
+                      Make Your First Transaction
+                    </Button>
+                  </div>
+                ) : (
+                  recentTransactions.map((transaction) => (
+                    <div
+                      key={transaction.id}
+                      onClick={() => handleSmoothInteraction(() => handleTransactionClick(transaction.id))}
+                      className="flex items-center justify-between p-4 rounded-xl bg-background/50 border border-border/40 transition-all duration-300 ease-out hover:bg-background/80 hover:border-primary/20 hover:scale-105 active:scale-95 cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-4 transition-all duration-300">
+                        <div
+                          className={`p-3 rounded-xl transition-all duration-300 ease-out group-hover:scale-110 group-active:scale-95 ${
+                            transaction.type === "sent"
+                              ? "bg-primary/20 text-primary"
+                              : "bg-success/20 text-success"
+                          }`}
+                        >
+                          {transaction.type === "sent" ? (
+                            <ArrowUpRight className="h-5 w-5 transition-transform duration-300 group-hover:rotate-12" />
+                          ) : (
+                            <ArrowDownLeft className="h-5 w-5 transition-transform duration-300 group-hover:rotate-12" />
                           )}
                         </div>
+                        <div className="transition-all duration-300">
+                          <p className="font-medium transition-colors duration-300">
+                            {transaction.recipient_sender}
+                          </p>
+                          <p className="text-sm text-muted-foreground transition-colors duration-300">
+                            {transaction.category}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1 transition-all duration-300">
+                            <span className="text-xs text-muted-foreground transition-colors duration-300">
+                              {formatTransactionTime(transaction.transaction_time)}
+                            </span>
+                            {transaction.requires_verification && transaction.verified && (
+                              <Badge variant="outline" className="text-xs bg-success/20 text-success border-success/20 transition-all duration-300">
+                                <CheckCircle2 className="h-3 w-3 mr-1 transition-transform duration-300" />
+                                Verified
+                              </Badge>
+                            )}
+                            {transaction.requires_verification && !transaction.verified && (
+                              <Badge variant="outline" className="text-xs bg-warning/20 text-warning border-warning/20 transition-all duration-300">
+                                <AlertTriangle className="h-3 w-3 mr-1 transition-transform duration-300" />
+                                Pending Verification
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right transition-all duration-300">
+                        <p className={`font-bold text-lg transition-colors duration-300 ${
+                          transaction.type === "sent" ? "text-primary" : "text-success"
+                        }`}>
+                          {transaction.type === "sent" ? "-" : "+"}₹{transaction.amount.toLocaleString()}
+                        </p>
+                        <span className={`text-xs px-2 py-1 rounded-full transition-all duration-300 ${
+                          transaction.status === "verified" || transaction.status === "completed"
+                            ? "bg-success/20 text-success" 
+                            : transaction.status === "pending"
+                            ? "bg-warning/20 text-warning"
+                            : "bg-destructive/20 text-destructive"
+                        }`}>
+                          {transaction.status}
+                        </span>
                       </div>
                     </div>
-                    <div className="text-right transition-all duration-300">
-                      <p className={`font-bold text-lg transition-colors duration-300 ${
-                        transaction.type === "sent" ? "text-primary" : "text-success"
-                      }`}>
-                        {transaction.type === "sent" ? "-" : "+"}₹{transaction.amount.toLocaleString()}
-                      </p>
-                      <span className={`text-xs px-2 py-1 rounded-full transition-all duration-300 ${
-                        transaction.status === "verified" 
-                          ? "bg-success/20 text-success" 
-                          : "bg-primary/20 text-primary"
-                      }`}>
-                        {transaction.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </Card>
           </div>
