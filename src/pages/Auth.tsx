@@ -14,7 +14,7 @@ import { getAnalytics } from "firebase/analytics";
 
 // Your Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyA7mN_Z_8jnUERNBZdDB4F_maJw-RpDoq0",
+  apiKey: "enter you API KEY",
   authDomain: "safapay-9e38b.firebaseapp.com",
   projectId: "safapay-9e38b",
   storageBucket: "safapay-9e38b.firebasestorage.app",
